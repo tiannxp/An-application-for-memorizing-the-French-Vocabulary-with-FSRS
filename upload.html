@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>添加新卡片</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/upload.css">
+</head>
+<body>
+  <main class="upload-shell">
+    <section class="upload-panel">
+      <div class="panel-header">
+        <p class="eyebrow">Card Studio</p>
+        <h1 class="panel-title">添加新卡片</h1>
+        <p class="panel-subtitle">支持图片识别和手动输入，两种方式都直接写入当前 SQLite 主库。</p>
+      </div>
+
+      <div class="upload-area" id="upload-area" role="button" tabindex="0" aria-label="上传图片生成卡片">
+        <div class="upload-content" id="upload-content">
+          <svg class="upload-icon" width="52" height="52" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 16V8M12 8L8.5 11.5M12 8L15.5 11.5M20 16.6A5 5 0 0 0 18 7H16.8A8 8 0 1 0 4 16.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h2>拖拽图片，或点击选择文件</h2>
+          <p>适合从截图、讲义、阅读材料里直接抽取表达。</p>
+        </div>
+        <input type="file" id="file-input" accept="image/*" hidden>
+        <div class="upload-feedback" id="upload-feedback" aria-live="polite"></div>
+      </div>
+
+      <div class="separator"><span>或</span></div>
+
+      <form class="manual-form" id="manual-form">
+        <label for="expression" class="input-label">Expression</label>
+        <input type="text" id="expression" class="input" placeholder="例如：souci; semestre" autocomplete="off">
+
+        <label for="context" class="input-label">Contexte</label>
+        <textarea id="context" class="textarea" placeholder="可选。给一点上下文，便于 AI 生成更贴切的定义和例句。"></textarea>
+
+        <button type="submit" class="main-btn">生成卡片</button>
+        <div class="form-feedback" id="form-feedback" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+
+  <script src="/upload.js"></script>
+</body>
+</html>

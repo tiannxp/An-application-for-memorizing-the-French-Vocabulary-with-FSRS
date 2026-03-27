@@ -1,0 +1,18 @@
+{
+  "dependencies": {
+    "csv-parse": "^6.0.0",
+    "dayjs": "^1.11.13",
+    "fsrs-browser": "^4.1.1",
+    "fsrs.js": "^1.2.2"
+  },
+  "name": "french-flashcard-app",
+  "version": "1.0.0",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

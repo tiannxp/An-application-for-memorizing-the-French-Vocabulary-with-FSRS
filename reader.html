@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reader MVP</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root { --reader-bg:#f6f7f9; --panel-bg:#fff; --border:rgba(0,0,0,.08); --text:#1f2328; --muted:rgba(31,35,40,.68); --accent:#0d6efd; --title:#101828; --deck:#344054; }
+    body { background: var(--reader-bg); color: var(--text); }
+    .app-shell { height: 100vh; display:flex; flex-direction:column; }
+    .topbar { background: var(--panel-bg); border-bottom:1px solid var(--border); }
+    .main { flex:1; display:grid; grid-template-columns:320px minmax(0,1fr) 360px; gap:12px; padding:12px; overflow:hidden; }
+    .panel { background: var(--panel-bg); border:1px solid var(--border); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+    .panel-header { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .panel-body { padding:12px; overflow:auto; min-height:0; }
+    .article-title { font-weight:700; font-size:.95rem; line-height:1.25rem; margin-bottom:2px; }
+    .article-meta { color: var(--muted); font-size:.8rem; }
+    .reader { padding:26px 24px 60px; max-width:780px; margin:0 auto; font-size:var(--reader-font-size,18px); line-height:1.7; text-rendering:optimizeLegibility; }
+    .reader .reader-article-header { margin:0 0 22px; padding:0 0 14px; border-bottom:1px solid var(--border); }
+    .reader .reader-article-title { margin:0 0 .55em; font-size:clamp(1.55rem,2vw,1.95rem); letter-spacing:-.012em; font-weight:700; line-height:1.22; color:var(--title); text-wrap:balance; overflow-wrap:anywhere; }
+    .reader .reader-article-deck { margin:0 0 10px; }
+    .reader .reader-article-deck p { margin:0 0 .65em; font-size:1.02em; color:var(--deck); }
+    .reader .reader-article-meta { color:var(--muted); font-size:.92rem; display:flex; flex-wrap:wrap; gap:10px; }
+    .reader .reader-article-meta .byline a { color:var(--accent); }
+    .reader figure.reader-figure, .import-preview figure.reader-figure { margin:14px 0; border-radius:14px; overflow:hidden; }
+    .reader figure.reader-figure img, .import-preview figure.reader-figure img { display:block; width:100%; height:auto; }
+    .reader figure.reader-figure figcaption, .import-preview figure.reader-figure figcaption { padding:10px 12px; font-size:.92rem; color:var(--muted); background:rgba(0,0,0,.02); }
+    .reader h1, .reader h2, .reader h3 { margin-top:1.2em; margin-bottom:.6em; line-height:1.2; }
+    .reader p { margin:0 0 1em; }
+    .reader blockquote { border-left:4px solid rgba(13,110,253,.25); padding-left:12px; color:rgba(31,35,40,.78); }
+    .reader a { color:var(--accent); text-decoration:none; }
+    .reader a:hover { text-decoration:underline; }
+    .reader mark[data-highlight-id] { padding:.05em .15em; border-radius:6px; cursor:pointer; }
+    .reader mark[data-highlight-id].active { outline:2px solid rgba(13,110,253,.55); outline-offset:2px; }
+    .reader.clean-mode [data-clean-target] { position:relative; }
+    .reader.clean-mode .clean-remove-btn, .reader.clean-mode .edit-pencil-btn { position:absolute; top:8px; width:28px; height:28px; border-radius:999px; border:1px solid rgba(0,0,0,.10); background:rgba(255,255,255,.92); display:grid; place-items:center; box-shadow:0 2px 10px rgba(0,0,0,.10); cursor:pointer; opacity:0; transition:opacity .12s ease; z-index:5; }
+    .reader.clean-mode .clean-remove-btn { right:8px; }
+    .reader.clean-mode .edit-pencil-btn { right:44px; }
+    .reader.clean-mode [data-clean-target]:hover .clean-remove-btn, .reader.clean-mode [data-clean-target]:hover .edit-pencil-btn { opacity:1; }
+    .reader.clean-mode [contenteditable="true"] { outline:2px solid rgba(13,110,253,.35); outline-offset:4px; border-radius:10px; }
+    .reader.clean-mode [contenteditable="true"]:focus { outline-color:rgba(13,110,253,.55); }
+    .clean-media-wrap { display:block; margin:14px 0; border-radius:14px; overflow:hidden; }
+    .muted { color:var(--muted); }
+    .list-item { border:1px solid var(--border); border-radius:10px; padding:10px; cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease; background:#fff; }
+    .list-item:hover { border-color:rgba(13,110,253,.35); box-shadow:0 1px 8px rgba(0,0,0,.05); }
+    .list-item.active { border-color:rgba(13,110,253,.55); box-shadow:0 1px 10px rgba(13,110,253,.10); }
+    .highlight-row { border:1px solid var(--border); border-radius:10px; padding:10px; cursor:pointer; background:#fff; }
+    .highlight-row:hover { border-color:rgba(13,110,253,.30); }
+    .highlight-row.active { border-color:rgba(13,110,253,.55); box-shadow:0 1px 10px rgba(13,110,253,.10); }
+    .highlight-quote { font-size:.95rem; line-height:1.35rem; margin-bottom:6px; }
+    .highlight-note { color:var(--muted); font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .toast-container { position:fixed; right:16px; bottom:16px; z-index:9999; }
+    .content-editor { min-height:280px; height:280px; overflow:auto; white-space:pre-wrap; }
+    .import-preview { border:1px solid var(--border); border-radius:10px; padding:14px; background:#fff; max-height:320px; overflow:auto; }
+    .import-toolbar .btn { white-space:nowrap; }
+    @media (max-width:1200px) { .main { grid-template-columns:320px minmax(0,1fr); } .right-panel { display:none; } }
+    @media (max-width:900px) { .main { grid-template-columns:1fr; } .left-panel,.right-panel { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="container-fluid py-2 px-3 d-flex align-items-center justify-content-between gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <span class="fw-semibold">Reader MVP</span>
+          <span class="text-secondary small" id="current-article-pill"></span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button class="btn btn-sm btn-outline-primary" id="import-btn"><i class="bi bi-file-earmark-plus"></i> 导入</button>
+          <button class="btn btn-sm btn-outline-secondary" id="highlight-btn" disabled><i class="bi bi-highlighter"></i> 高亮选中</button>
+          <div class="btn-group btn-group-sm" role="group" aria-label="font-size">
+            <button class="btn btn-outline-secondary" id="font-dec" title="缩小字体">A-</button>
+            <button class="btn btn-outline-secondary" id="font-inc" title="放大字体">A+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="main">
+      <div class="panel left-panel">
+        <div class="panel-header">
+          <div class="fw-semibold">文章</div>
+          <button class="btn btn-sm btn-outline-secondary" id="refresh-articles"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <div class="panel-body">
+          <div class="mb-2"><input class="form-control form-control-sm" id="article-filter" placeholder="搜索标题..." /></div>
+          <div class="d-grid gap-2" id="article-list"></div>
+          <div class="mt-3 small muted" id="article-empty-hint" style="display:none;">还没有文章。点击右上角“导入”粘贴内容。</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="d-flex flex-column">
+            <div class="fw-semibold" id="reader-title">未选择文章</div>
+            <div class="small muted" id="reader-meta"></div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="clean-mode-btn" style="display:none;" title="清理模式（点叉删除、点笔编辑）"><i class="bi bi-pencil-square"></i></button>
+            <button class="btn btn-sm btn-outline-secondary" id="undo-clean-btn" style="display:none;" disabled title="撤销上一步"><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button class="btn btn-sm btn-primary" id="save-layout-btn" style="display:none;" disabled title="保存清理结果"><i class="bi bi-check2"></i></button>
+            <button class="btn btn-sm btn-outline-danger" id="delete-article-btn" style="display:none;"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+        <div class="panel-body" style="padding:0;">
+          <div class="reader" id="reader-content">
+            <p class="muted">从左侧选择文章，或点击“导入”创建一篇新文章。</p>
+            <p class="muted">MVP 限制：一次高亮必须落在同一个文本节点内，避免跨段落或跨元素。</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel right-panel">
+        <div class="panel-header">
+          <div class="fw-semibold">高亮</div>
+          <div class="small muted" id="highlight-count">0</div>
+        </div>
+        <div class="panel-body">
+          <div class="mb-3" id="active-highlight-editor" style="display:none;">
+            <div class="mb-2 small muted">选中高亮</div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1">颜色</label>
+              <select class="form-select form-select-sm" id="highlight-color">
+                <option value="#fff3bf">黄色</option>
+                <option value="#d3f9d8">绿色</option>
+                <option value="#d0ebff">蓝色</option>
+                <option value="#ffe3e3">红色</option>
+                <option value="#f3d9fa">紫色</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1">笔记</label>
+              <textarea class="form-control form-control-sm" rows="3" id="highlight-note" placeholder="写点你的理解..."></textarea>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-primary" id="save-highlight-btn">保存</button>
+              <button class="btn btn-sm btn-outline-secondary" id="add-to-inbox-btn">加入词袋</button>
+              <button class="btn btn-sm btn-outline-danger" id="delete-highlight-btn">删除</button>
+            </div>
+            <hr />
+          </div>
+          <div class="d-grid gap-2" id="highlight-list"></div>
+          <div class="mt-3 small muted" id="highlight-empty-hint">没有高亮。选中文本后点击“高亮选中”。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">导入文章（粘贴）</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-md-7">
+              <label class="form-label">标题（可选）</label>
+              <input class="form-control" id="import-title" placeholder="例如：Le Monde - ..." />
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">来源 URL（可选）</label>
+              <input class="form-control" id="import-url" placeholder="https://..." />
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="d-flex align-items-end justify-content-between gap-3 flex-wrap import-toolbar">
+              <div>
+                <label class="form-label mb-1">导入模式</label>
+                <div class="d-flex gap-3 flex-wrap">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="importMode" id="modeAuto" value="auto" checked>
+                    <label class="form-check-label" for="modeAuto">自动（优先 HTML）</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="importMode" id="modeHtml" value="html">
+                    <label class="form-check-label" for="modeHtml">HTML</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="importMode" id="modeText" value="text">
+                    <label class="form-check-label" for="modeText">纯文本</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="import-denoise" checked>
+                    <label class="form-check-label" for="import-denoise">去噪（推荐）</label>
+                  </div>
+                </div>
+                <div class="small muted mt-1" id="import-detected">粘贴时会优先尝试捕获 HTML，并做保结构清洗。</div>
+              </div>
+              <div class="btn-group btn-group-sm" role="group" aria-label="import view">
+                <button type="button" class="btn btn-secondary" id="import-view-edit">编辑</button>
+                <button type="button" class="btn btn-outline-secondary" id="import-view-preview">预览</button>
+                <button type="button" class="btn btn-outline-secondary" id="import-clear">清空</button>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">粘贴正文</label>
+            <div id="import-editor-wrap">
+              <div class="form-control content-editor" id="import-content-editor" contenteditable="true" spellcheck="false"></div>
+              <div class="small muted mt-2">提示：直接从网页复制粘贴时，会优先保留 HTML 结构，并尽量拆分段落、标题、列表与图片。</div>
+            </div>
+            <div id="import-preview-wrap" style="display:none;">
+              <div class="row g-2">
+                <div class="col-lg-8">
+                  <div class="import-preview reader" id="import-preview"></div>
+                </div>
+                <div class="col-lg-4">
+                  <div class="import-preview" id="import-preview-blocks"></div>
+                </div>
+              </div>
+              <div class="small muted mt-2">左侧为清洗后预览；右侧可指定“正文从此开始”，保存后会按这个结果排版。</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" id="import-save-btn">保存并打开</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="inboxModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">加入词袋（Inbox）</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">表达（expression）</label>
+            <input class="form-control" id="inbox-expression" placeholder="选中的词 / 短语..." />
+          </div>
+          <div class="mb-2">
+            <label class="form-label">上下文（可选）</label>
+            <textarea class="form-control" rows="3" id="inbox-context" placeholder="可以粘贴句子 / 段落..."></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">备注（可选）</label>
+            <textarea class="form-control" rows="2" id="inbox-note" placeholder="你想记住的点..."></textarea>
+          </div>
+          <div class="small muted">状态默认是 draft，后续可继续做批量制卡。</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" id="inbox-save-btn">加入词袋</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const API_BASE_CANDIDATES = (() => {
+      const params = new URLSearchParams(window.location.search);
+      const configured = params.get("api") || window.localStorage.getItem("reader_api_base") || "";
+      const base = [];
+      const push = (value) => {
+        const normalized = (value || "").trim().replace(/\/+$/, "");
+        if (!base.includes(normalized)) base.push(normalized);
+      };
+      push(configured);
+      if (window.location.protocol !== "file:") push(window.location.origin);
+      if (window.location.protocol === "file:") {
+        push("http://127.0.0.1:5000");
+        push("http://localhost:5000");
+        push("http://127.0.0.1:8000");
+        push("http://localhost:8000");
+      }
+      push("");
+      return base;
+    })();
+    let resolvedApiBasePromise = null;
+    const state = { articles: [], currentArticleId: null, currentArticle: null, highlights: [], activeHighlightId: null, fontSize: 18, importView: "edit", importLastPaste: { hasHtml: false, hasText: false, at: 0 }, importBodyStartIndex: null, cleanMode: false, cleanUndo: [], layoutDirty: false };
+    const el = {
+      currentArticlePill: document.getElementById("current-article-pill"),
+      importBtn: document.getElementById("import-btn"),
+      importModal: new bootstrap.Modal(document.getElementById("importModal")),
+      importTitle: document.getElementById("import-title"),
+      importUrl: document.getElementById("import-url"),
+      importEditorWrap: document.getElementById("import-editor-wrap"),
+      importPreviewWrap: document.getElementById("import-preview-wrap"),
+      importEditor: document.getElementById("import-content-editor"),
+      importPreview: document.getElementById("import-preview"),
+      importPreviewBlocks: document.getElementById("import-preview-blocks"),
+      importViewEdit: document.getElementById("import-view-edit"),
+      importViewPreview: document.getElementById("import-view-preview"),
+      importClear: document.getElementById("import-clear"),
+      importDetected: document.getElementById("import-detected"),
+      importDenoise: document.getElementById("import-denoise"),
+      importSaveBtn: document.getElementById("import-save-btn"),
+      articleList: document.getElementById("article-list"),
+      articleEmptyHint: document.getElementById("article-empty-hint"),
+      articleFilter: document.getElementById("article-filter"),
+      refreshArticles: document.getElementById("refresh-articles"),
+      readerTitle: document.getElementById("reader-title"),
+      readerMeta: document.getElementById("reader-meta"),
+      readerContent: document.getElementById("reader-content"),
+      highlightBtn: document.getElementById("highlight-btn"),
+      fontInc: document.getElementById("font-inc"),
+      fontDec: document.getElementById("font-dec"),
+      cleanModeBtn: document.getElementById("clean-mode-btn"),
+      undoCleanBtn: document.getElementById("undo-clean-btn"),
+      saveLayoutBtn: document.getElementById("save-layout-btn"),
+      deleteArticleBtn: document.getElementById("delete-article-btn"),
+      highlightCount: document.getElementById("highlight-count"),
+      highlightList: document.getElementById("highlight-list"),
+      highlightEmptyHint: document.getElementById("highlight-empty-hint"),
+      activeHighlightEditor: document.getElementById("active-highlight-editor"),
+      highlightColor: document.getElementById("highlight-color"),
+      highlightNote: document.getElementById("highlight-note"),
+      saveHighlightBtn: document.getElementById("save-highlight-btn"),
+      deleteHighlightBtn: document.getElementById("delete-highlight-btn"),
+      addToInboxBtn: document.getElementById("add-to-inbox-btn"),
+      inboxModal: new bootstrap.Modal(document.getElementById("inboxModal")),
+      inboxExpression: document.getElementById("inbox-expression"),
+      inboxContext: document.getElementById("inbox-context"),
+      inboxNote: document.getElementById("inbox-note"),
+      inboxSaveBtn: document.getElementById("inbox-save-btn"),
+      toastContainer: document.getElementById("toast-container")
+    };
+
+    function escapeHtml(str) {
+      return (str ?? "").toString().replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#039;");
+    }
+    function normalizeSpaces(text) { return (text || "").replace(/\s+/g, " ").trim(); }
+    function toast(message, variant = "secondary") {
+      const wrapper = document.createElement("div");
+      wrapper.className = `toast align-items-center text-bg-${variant} border-0`;
+      wrapper.role = "alert";
+      wrapper.ariaLive = "assertive";
+      wrapper.ariaAtomic = "true";
+      wrapper.innerHTML = `<div class="d-flex"><div class="toast-body">${escapeHtml(message)}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
+      el.toastContainer.appendChild(wrapper);
+      const t = new bootstrap.Toast(wrapper, { delay: 2300 });
+      t.show();
+      wrapper.addEventListener("hidden.bs.toast", () => wrapper.remove());
+    }
+    async function resolveApiBase() {
+      if (!resolvedApiBasePromise) {
+        resolvedApiBasePromise = (async () => {
+          for (const candidate of API_BASE_CANDIDATES) {
+            const healthUrl = `${candidate}/api/health`;
+            try {
+              const res = await fetch(healthUrl, { method: "GET" });
+              if (res.ok) {
+                if (candidate) window.localStorage.setItem("reader_api_base", candidate);
+                return candidate;
+              }
+            } catch (_) {}
+          }
+          return API_BASE_CANDIDATES[0] || "";
+        })();
+      }
+      return resolvedApiBasePromise;
+    }
+    function friendlyFetchError(error) {
+      const message = String(error?.message || error || "");
+      if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
+        if (window.location.protocol === "file:") {
+          return "无法连接后端接口。请先启动 Flask 服务，再通过 http://127.0.0.1:5000/reader 打开阅读器。";
+        }
+        return "无法连接后端接口，请确认 Flask 服务正在运行。";
+      }
+      return message || "请求失败";
+    }
+    async function api(path, options = {}) {
+      const apiBase = await resolveApiBase();
+      let res;
+      try {
+        res = await fetch(apiBase + path, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options });
+      } catch (error) {
+        throw new Error(friendlyFetchError(error));
+      }
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      return (res.headers.get("content-type") || "").includes("application/json") ? res.json() : res.text();
+    }
+    function setFontSize(size) {
+      state.fontSize = Math.max(14, Math.min(26, size));
+      document.documentElement.style.setProperty("--reader-font-size", `${state.fontSize}px`);
+    }
+    function getImportMode() { return document.querySelector('input[name="importMode"]:checked')?.value || "auto"; }
+    function isProbablyHtml(html) { return /<(p|h1|h2|h3|ul|ol|li|blockquote|pre|div|section|article|br|a|strong|em|span|img|figure|picture)\b/i.test(html || ""); }
+    function shouldDropTextBlock(text) {
+      const t = normalizeSpaces(text);
+      if (!t) return true;
+      if (!el.importDenoise.checked) return false;
+      const lower = t.toLowerCase();
+      return /^https?:\/\//.test(lower) || lower.includes("vous pouvez partager un article") || (lower.includes("reproduction totale") && lower.includes("le monde")) || lower.includes("conditions générales de vente") || lower.includes("conditions generales de vente") || lower.includes("syndication@lemonde.fr") || /^newsletter\b/.test(lower) || /^nos analyses\b/.test(lower) || /^toutes les newsletters\b/.test(lower) || /^à lire aussi\b/.test(lower) || /^a lire aussi\b/.test(lower) || /^vid[ée]o\b/.test(lower) || (/^logo\b/.test(lower) && t.length < 140);
+    }
+    function safeHref(href) {
+      const h = (href || "").trim();
+      if (!h || /^javascript:/i.test(h)) return "";
+      return h;
+    }
+    function safeSrc(src) {
+      const s = (src || "").trim();
+      if (!s) return "";
+      if (/^https?:\/\//i.test(s) || /^data:image\/(png|jpe?g|gif|webp|avif);base64,/i.test(s) || /^\//.test(s)) return s;
+      return "";
+    }
+    function joinInline(parts) { return parts.filter(Boolean).join(""); }
+    function serializeInline(node) {
+      if (!node) return "";
+      if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.textContent || "");
+      if (node.nodeType !== Node.ELEMENT_NODE) return "";
+      const tag = node.tagName.toUpperCase();
+      if (tag === "BR") return "<br>";
+      const inner = joinInline(Array.from(node.childNodes).map(serializeInline));
+      if (tag === "STRONG" || tag === "B") return `<strong>${inner}</strong>`;
+      if (tag === "EM" || tag === "I") return `<em>${inner}</em>`;
+      if (tag === "CODE") return `<code>${inner}</code>`;
+      if (tag === "A") {
+        const href = safeHref(node.getAttribute("href"));
+        return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${inner}</a>` : inner;
+      }
+      return inner;
+    }
+    function buildFigureHtml(imgEl, src, captionText = "") {
+      const alt = (imgEl?.getAttribute?.("alt") || "").trim();
+      const altAttr = alt ? ` alt="${escapeHtml(alt)}"` : "";
+      const cap = normalizeSpaces(captionText);
+      return `<figure class="reader-figure"><img src="${escapeHtml(src)}" loading="lazy"${altAttr}>${cap ? `<figcaption>${escapeHtml(cap)}</figcaption>` : ""}</figure>`;
+    }
+    function htmlToBlocks(rawHtml) {
+      const doc = new DOMParser().parseFromString(rawHtml || "", "text/html");
+      doc.querySelectorAll("script,style,iframe,noscript").forEach((n) => n.remove());
+      const blocks = [];
+      const containerTags = new Set(["DIV", "SECTION", "ARTICLE", "HEADER", "FOOTER", "MAIN", "ASIDE"]);
+      function pushParagraph(text, html = "") {
+        const t = normalizeSpaces(text);
+        if (!t || shouldDropTextBlock(t)) return;
+        blocks.push({ html: `<p>${html || escapeHtml(t)}</p>`, text: t });
+      }
+      function visit(node) {
+        if (!node) return;
+        if (node.nodeType === Node.TEXT_NODE) return pushParagraph(node.textContent || "");
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const tag = node.tagName.toUpperCase();
+        if (["SCRIPT", "STYLE", "IFRAME", "NOSCRIPT"].includes(tag)) return;
+        if (tag === "IMG") {
+          const src = safeSrc(node.getAttribute("src") || node.getAttribute("data-src") || "");
+          if (src) blocks.push({ html: buildFigureHtml(node, src), text: "" });
+          return;
+        }
+        if (tag === "PICTURE" || tag === "FIGURE") {
+          const img = node.querySelector("img");
+          if (img) {
+            const src = safeSrc(img.getAttribute("src") || img.getAttribute("data-src") || "");
+            if (src) {
+              blocks.push({ html: buildFigureHtml(img, src, node.querySelector("figcaption")?.textContent || ""), text: normalizeSpaces(node.textContent || "") });
+              return;
+            }
+          }
+        }
+        if (/^H[1-6]$/.test(tag)) {
+          const level = Math.min(3, Math.max(1, parseInt(tag.slice(1), 10) || 1));
+          const text = normalizeSpaces(node.textContent || "");
+          if (text) blocks.push({ html: `<h${level}>${joinInline(Array.from(node.childNodes).map(serializeInline)) || escapeHtml(text)}</h${level}>`, text });
+          return;
+        }
+        if (tag === "P") return pushParagraph(node.textContent || "", joinInline(Array.from(node.childNodes).map(serializeInline)));
+        if (tag === "BLOCKQUOTE") {
+          const text = normalizeSpaces(node.textContent || "");
+          if (text) blocks.push({ html: `<blockquote>${joinInline(Array.from(node.childNodes).map(serializeInline)) || `<p>${escapeHtml(text)}</p>`}</blockquote>`, text });
+          return;
+        }
+        if (tag === "UL" || tag === "OL") {
+          const items = Array.from(node.querySelectorAll(":scope > li")).map((li) => {
+            const text = normalizeSpaces(li.textContent || "");
+            return text ? `<li>${joinInline(Array.from(li.childNodes).map(serializeInline)) || escapeHtml(text)}</li>` : "";
+          }).filter(Boolean);
+          const text = normalizeSpaces(node.textContent || "");
+          if (items.length && !shouldDropTextBlock(text)) blocks.push({ html: `<${tag.toLowerCase()}>${items.join("")}</${tag.toLowerCase()}>`, text });
+          return;
+        }
+        if (tag === "PRE") {
+          const text = (node.textContent || "").replace(/\r\n/g, "\n");
+          const t = normalizeSpaces(text);
+          if (t) blocks.push({ html: `<pre><code>${escapeHtml(text)}</code></pre>`, text: t });
+          return;
+        }
+        if (containerTags.has(tag)) return Array.from(node.childNodes).forEach(visit);
+        pushParagraph(node.textContent || "", joinInline(Array.from(node.childNodes).map(serializeInline)));
+      }
+      Array.from(doc.body.childNodes).forEach(visit);
+      return blocks;
+    }
+    function textToBlocks(rawText) {
+      return (rawText || "").replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => normalizeSpaces(part)).filter((part) => part && !shouldDropTextBlock(part)).map((part) => ({ html: `<p>${escapeHtml(part)}</p>`, text: part }));
+    }
+    function normalizeBlocks(blocks) {
+      const out = [];
+      let prevText = "";
+      let prevMedia = "";
+      for (const block of blocks || []) {
+        const html = (block.html || "").trim();
+        const text = normalizeSpaces(block.text || "");
+        const media = html.match(/src\s*=\s*"([^"]+)"/i)?.[1] || "";
+        if (media) {
+          if (media === prevMedia) continue;
+          prevMedia = media;
+          prevText = "";
+          out.push({ html, text });
+          continue;
+        }
+        if (!text || shouldDropTextBlock(text) || text === prevText) continue;
+        prevText = text;
+        prevMedia = "";
+        out.push({ html, text });
+      }
+      return out;
+    }
+    function isBylineText(text) { return /^par\s+/i.test(text || "") || /^by\s+/i.test(text || ""); }
+    function isDatelineText(text) {
+      const t = (text || "").toLowerCase();
+      return (/^le\s+\d{1,2}\s+/.test(t) || /^\d{1,2}\s+\S+\s+\d{4}/.test(t)) && /\d{4}/.test(t);
+    }
+    function extractInnerFromBlockHtml(blockHtml) {
+      const match = (blockHtml || "").trim().match(/^<([a-z0-9]+)[^>]*>([\s\S]*)<\/\1>$/i);
+      return match ? match[2].trim() : blockHtml;
+    }
+    function extractStructureFromBlocks(blocks, bodyStartOverride) {
+      const list = blocks || [];
+      let titleIndex = list.findIndex((b) => /^<h[1-6][\s>]/i.test(b.html));
+      if (titleIndex < 0 && list.length) titleIndex = 0;
+      let bylineIndex = -1;
+      let datelineIndex = -1;
+      for (let i = Math.max(0, titleIndex + 1); i < list.length; i += 1) {
+        if (bylineIndex < 0 && isBylineText(list[i].text)) bylineIndex = i;
+        if (datelineIndex < 0 && isDatelineText(list[i].text)) datelineIndex = i;
+      }
+      const deckBlocks = [];
+      for (let i = Math.max(0, titleIndex + 1); i < list.length; i += 1) {
+        if (i === bylineIndex || i === datelineIndex) continue;
+        const text = list[i].text || "";
+        if (!text || text.length < 40 || text.length > 320 || !/^<p/i.test(list[i].html)) break;
+        deckBlocks.push(list[i]);
+        if (deckBlocks.length >= 2) break;
+      }
+      const inferred = datelineIndex >= 0 ? datelineIndex + 1 : (bylineIndex >= 0 ? bylineIndex + 1 : Math.max(1, titleIndex + 1));
+      const bodyStart = typeof bodyStartOverride === "number" ? bodyStartOverride : inferred;
+      return { titleBlock: titleIndex >= 0 ? list[titleIndex] : null, deckBlocks, bylineBlock: bylineIndex >= 0 && bylineIndex < bodyStart ? list[bylineIndex] : null, datelineBlock: datelineIndex >= 0 && datelineIndex < bodyStart ? list[datelineIndex] : null, bodyBlocks: list.slice(Math.max(0, bodyStart)), bodyStart: Math.max(0, bodyStart) };
+    }
+    function composeStructuredHtml(extracted) {
+      const titleInner = extracted.titleBlock ? extractInnerFromBlockHtml(extracted.titleBlock.html) : "";
+      const titleText = normalizeSpaces(extracted.titleBlock?.text || "");
+      const titleHtml = titleInner ? `<h1 class="reader-article-title">${titleInner}</h1>` : `<h1 class="reader-article-title">${escapeHtml(titleText || "（无标题）")}</h1>`;
+      const deckHtml = extracted.deckBlocks?.length ? `<div class="reader-article-deck">${extracted.deckBlocks.map((b) => b.html).join("")}</div>` : "";
+      const bylineHtml = extracted.bylineBlock ? `<div class="byline">${extractInnerFromBlockHtml(extracted.bylineBlock.html)}</div>` : "";
+      const datelineHtml = extracted.datelineBlock ? `<div class="dateline">${extractInnerFromBlockHtml(extracted.datelineBlock.html)}</div>` : "";
+      const meta = bylineHtml || datelineHtml ? `<div class="reader-article-meta">${bylineHtml}${datelineHtml}</div>` : "";
+      const body = (extracted.bodyBlocks || []).map((b) => b.html).join("") || "<p></p>";
+      return `<header class="reader-article-header">${titleHtml}${deckHtml}${meta}</header>${body}`;
+    }
+    function buildImportedContentWithBlocks(bodyStartOverride) {
+      const mode = getImportMode();
+      const rawHtml = el.importEditor.innerHTML || "";
+      const rawText = el.importEditor.innerText || "";
+      const picked = mode === "auto" ? (isProbablyHtml(rawHtml) ? "html" : "text") : mode;
+      const blocks = picked === "html" ? normalizeBlocks(htmlToBlocks(rawHtml)) : normalizeBlocks(textToBlocks(rawText));
+      const extracted = extractStructureFromBlocks(blocks, bodyStartOverride);
+      return { picked, content_raw: picked === "html" ? rawHtml : rawText, content_html: composeStructuredHtml(extracted), blocks, extracted };
+    }
+    function inferTitleFromContentHtml(contentHtml) {
+      const doc = new DOMParser().parseFromString(contentHtml || "", "text/html");
+      const text = normalizeSpaces(doc.querySelector("header h1, h1, h2, h3, p, blockquote, li")?.textContent || "");
+      return text ? (text.length > 140 ? text.slice(0, 140) + "..." : text) : "未命名文章";
+    }
+    function updateImportDetectedHint(extra = "") {
+      const parts = [];
+      if (state.importLastPaste.hasHtml) parts.push("HTML");
+      if (state.importLastPaste.hasText) parts.push("纯文本");
+      const base = parts.length ? `已捕获：${parts.join(" + ")}` : "可直接从网页粘贴，默认优先保留结构。";
+      el.importDetected.textContent = extra ? `${base} · ${extra}` : base;
+    }
+    function setImportView(view) {
+      state.importView = view;
+      const preview = view === "preview";
+      el.importEditorWrap.style.display = preview ? "none" : "block";
+      el.importPreviewWrap.style.display = preview ? "block" : "none";
+      el.importViewEdit.classList.toggle("btn-secondary", !preview);
+      el.importViewEdit.classList.toggle("btn-outline-secondary", preview);
+      el.importViewPreview.classList.toggle("btn-secondary", preview);
+      el.importViewPreview.classList.toggle("btn-outline-secondary", !preview);
+      if (preview) {
+        const built = buildImportedContentWithBlocks(state.importBodyStartIndex);
+        const activeStart = typeof state.importBodyStartIndex === "number" ? state.importBodyStartIndex : built.extracted.bodyStart;
+        el.importPreview.innerHTML = built.content_html;
+        renderImportBlocksPicker(built.blocks, activeStart);
+        updateImportDetectedHint(`预览：${built.picked.toUpperCase()}${el.importDenoise.checked ? "（去噪开）" : "（去噪关）"}`);
+      }
+    }
+    function blockKindLabel(html) {
+      const h = (html || "").trim().toLowerCase();
+      if (h.startsWith("<h")) return "标题";
+      if (h.startsWith("<blockquote")) return "引用";
+      if (h.startsWith("<ul") || h.startsWith("<ol")) return "列表";
+      if (h.startsWith("<pre")) return "代码";
+      if (h.startsWith("<figure") || h.includes("<img")) return "图片";
+      return "段落";
+    }
+    function renderImportBlocksPicker(blocks, activeStart) {
+      const items = (blocks || []).map((b, i) => {
+        const active = i === activeStart;
+        const text = escapeHtml((b.text || "").slice(0, 90));
+        const more = (b.text || "").length > 90 ? "..." : "";
+        return `<div class="p-2 mb-2 border rounded ${active ? "bg-primary-subtle border-primary" : ""}"><div class="d-flex align-items-start justify-content-between gap-2"><div class="small text-muted">#${i + 1} · ${blockKindLabel(b.html)}</div><button class="btn btn-sm btn-outline-primary" data-body-start="${i}">正文从此开始</button></div><div class="small mt-1">${text}${more}</div></div>`;
+      }).join("");
+      el.importPreviewBlocks.innerHTML = `<div class="d-flex align-items-center justify-content-between mb-2"><div class="fw-semibold">切分正文</div><button class="btn btn-sm btn-outline-secondary" id="import-body-auto">恢复自动</button></div><div class="small muted mb-2">若标题、导语、作者或时间混在一起，可以手动指定正文起点。</div>${items || '<div class="small muted">没有可用段落。</div>'}`;
+      el.importPreviewBlocks.querySelectorAll("[data-body-start]").forEach((btn) => btn.addEventListener("click", () => { state.importBodyStartIndex = parseInt(btn.dataset.bodyStart, 10); setImportView("preview"); }));
+      el.importPreviewBlocks.querySelector("#import-body-auto")?.addEventListener("click", () => { state.importBodyStartIndex = null; setImportView("preview"); });
+    }
+    function pathCompare(a, b) {
+      const len = Math.max(a.length, b.length);
+      for (let i = 0; i < len; i += 1) {
+        const av = a[i] ?? -1;
+        const bv = b[i] ?? -1;
+        if (av !== bv) return av - bv;
+      }
+      return 0;
+    }
+    function getNodePath(node, root) {
+      const path = [];
+      let cur = node;
+      while (cur && cur !== root) {
+        const parent = cur.parentNode;
+        if (!parent) return null;
+        const index = Array.prototype.indexOf.call(parent.childNodes, cur);
+        if (index < 0) return null;
+        path.push(index);
+        cur = parent;
+      }
+      if (cur !== root) return null;
+      return path.reverse(), path;
+    }
+    function getNodeByPath(path, root) {
+      let cur = root;
+      for (const index of path) {
+        if (!cur?.childNodes || index < 0 || index >= cur.childNodes.length) return null;
+        cur = cur.childNodes[index];
+      }
+      return cur;
+    }
+    function renderArticles() {
+      const filter = (el.articleFilter.value || "").toLowerCase().trim();
+      el.articleList.innerHTML = "";
+      const visible = state.articles.filter((a) => !filter || (a.title || "").toLowerCase().includes(filter));
+      el.articleEmptyHint.style.display = state.articles.length ? "none" : "block";
+      visible.forEach((a) => {
+        const row = document.createElement("div");
+        row.className = `list-item${a.id === state.currentArticleId ? " active" : ""}`;
+        row.innerHTML = `<div class="article-title">${escapeHtml(a.title || "（无标题）")}</div><div class="article-meta">${escapeHtml((a.source_url || "").slice(0, 80))}</div>`;
+        row.addEventListener("click", () => openArticle(a.id));
+        el.articleList.appendChild(row);
+      });
+    }
+    function clearActiveMark() {
+      el.readerContent.querySelectorAll("mark[data-highlight-id].active").forEach((m) => m.classList.remove("active"));
+    }
+    function setActiveHighlight(highlightId) {
+      state.activeHighlightId = highlightId;
+      clearActiveMark();
+      if (highlightId) el.readerContent.querySelectorAll(`mark[data-highlight-id="${CSS.escape(highlightId)}"]`).forEach((m) => m.classList.add("active"));
+      const current = state.highlights.find((h) => h.id === highlightId);
+      el.activeHighlightEditor.style.display = current ? "block" : "none";
+      if (!current) return;
+      el.highlightColor.value = current.color || "#fff3bf";
+      el.highlightNote.value = current.note || "";
+      renderHighlightsList();
+    }
+    function unwrapAllMarks() {
+      el.readerContent.querySelectorAll("mark[data-highlight-id]").forEach((mark) => {
+        const parent = mark.parentNode;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+      });
+      el.readerContent.normalize();
+    }
+    function applyHighlights() {
+      unwrapAllMarks();
+      const sorted = [...state.highlights].sort((a, b) => {
+        const cmp = pathCompare(JSON.parse(a.start_path), JSON.parse(b.start_path));
+        return cmp !== 0 ? -cmp : (b.start_offset || 0) - (a.start_offset || 0);
+      });
+      for (const h of sorted) {
+        try {
+          const startNode = getNodeByPath(JSON.parse(h.start_path), el.readerContent);
+          const endNode = getNodeByPath(JSON.parse(h.end_path), el.readerContent);
+          if (!startNode || !endNode || startNode !== endNode || startNode.nodeType !== Node.TEXT_NODE) continue;
+          const range = document.createRange();
+          range.setStart(startNode, Math.max(0, Math.min(h.start_offset, startNode.textContent.length)));
+          range.setEnd(endNode, Math.max(0, Math.min(h.end_offset, endNode.textContent.length)));
+          if (range.collapsed) continue;
+          const mark = document.createElement("mark");
+          mark.dataset.highlightId = h.id;
+          mark.style.backgroundColor = h.color || "#fff3bf";
+          mark.title = h.note || "高亮";
+          range.surroundContents(mark);
+        } catch (_) {}
+      }
+      el.readerContent.querySelectorAll("mark[data-highlight-id]").forEach((mark) => mark.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setActiveHighlight(mark.dataset.highlightId);
+      }));
+    }
+    function renderHighlightsList() {
+      el.highlightList.innerHTML = "";
+      el.highlightCount.textContent = `${state.highlights.length}`;
+      el.highlightEmptyHint.style.display = state.highlights.length ? "none" : "block";
+      state.highlights.slice().sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")).forEach((h) => {
+        const row = document.createElement("div");
+        row.className = `highlight-row${h.id === state.activeHighlightId ? " active" : ""}`;
+        row.innerHTML = `<div class="highlight-quote">${escapeHtml((h.quote_text || "").slice(0, 160))}</div><div class="highlight-note">${escapeHtml(h.note || "（无笔记）")}</div>`;
+        row.addEventListener("click", () => setActiveHighlight(h.id));
+        el.highlightList.appendChild(row);
+      });
+    }
+    async function loadArticles() {
+      const data = await api("/api/articles", { method: "GET" });
+      state.articles = data.articles || [];
+      renderArticles();
+      if (!state.currentArticleId && state.articles.length) await openArticle(state.articles[0].id);
+    }
+    async function openArticle(articleId) {
+      const data = await api(`/api/articles/${encodeURIComponent(articleId)}`, { method: "GET" });
+      state.currentArticleId = articleId;
+      state.currentArticle = data.article;
+      state.highlights = data.highlights || [];
+      state.activeHighlightId = null;
+      state.cleanMode = false;
+      state.cleanUndo = [];
+      state.layoutDirty = false;
+      el.readerTitle.textContent = state.currentArticle.title || "（无标题）";
+      el.readerMeta.textContent = state.currentArticle.source_url || "";
+      el.currentArticlePill.textContent = state.currentArticleId ? `#${state.currentArticleId.slice(0, 8)}` : "";
+      el.cleanModeBtn.style.display = "inline-block";
+      el.undoCleanBtn.style.display = "none";
+      el.undoCleanBtn.disabled = true;
+      el.saveLayoutBtn.style.display = "inline-block";
+      el.saveLayoutBtn.disabled = true;
+      el.deleteArticleBtn.style.display = "inline-block";
+      el.readerContent.classList.remove("clean-mode");
+      el.readerContent.innerHTML = state.currentArticle.content_html || "<p></p>";
+      applyHighlights();
+      renderHighlightsList();
+      renderArticles();
+      el.activeHighlightEditor.style.display = "none";
+      el.highlightBtn.disabled = true;
+    }
+    function selectionInReader() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return null;
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) return null;
+      const startNode = range.startContainer;
+      const endNode = range.endContainer;
+      if (!el.readerContent.contains(startNode) || !el.readerContent.contains(endNode)) return null;
+      if (state.cleanMode && el.readerContent.querySelector('[contenteditable="true"]')) return null;
+      if (startNode.nodeType !== Node.TEXT_NODE || endNode.nodeType !== Node.TEXT_NODE) return null;
+      if (startNode !== endNode) return { valid: false, reason: "当前版本只支持同一文本节点内高亮，请不要跨段落选择。" };
+      const quote = selection.toString().trim();
+      if (!quote) return null;
+      const startPath = getNodePath(startNode, el.readerContent);
+      const endPath = getNodePath(endNode, el.readerContent);
+      if (!startPath || !endPath) return null;
+      return { valid: true, quote_text: quote, start_path: JSON.stringify(startPath), start_offset: range.startOffset, end_path: JSON.stringify(endPath), end_offset: range.endOffset };
+    }
+    async function createHighlightFromSelection() {
+      if (!state.currentArticleId) return;
+      const info = selectionInReader();
+      if (!info) return;
+      if (!info.valid) return toast(info.reason || "无法高亮该选择", "warning");
+      const payload = { article_id: state.currentArticleId, quote_text: info.quote_text, start_path: info.start_path, start_offset: info.start_offset, end_path: info.end_path, end_offset: info.end_offset, color: "#fff3bf", note: "" };
+      const data = await api("/api/highlights", { method: "POST", body: JSON.stringify(payload) });
+      state.highlights.unshift(data.highlight);
+      applyHighlights();
+      renderHighlightsList();
+      setActiveHighlight(data.highlight.id);
+      window.getSelection()?.removeAllRanges();
+      el.highlightBtn.disabled = true;
+      toast("已添加高亮", "success");
+    }
+    async function saveActiveHighlight() {
+      const id = state.activeHighlightId;
+      if (!id) return;
+      const data = await api(`/api/highlights/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ color: el.highlightColor.value, note: el.highlightNote.value || "" }) });
+      const index = state.highlights.findIndex((h) => h.id === id);
+      if (index >= 0) state.highlights[index] = data.highlight;
+      applyHighlights();
+      renderHighlightsList();
+      setActiveHighlight(id);
+      toast("已保存高亮", "success");
+    }
+    async function deleteActiveHighlight() {
+      const id = state.activeHighlightId;
+      if (!id) return;
+      await api(`/api/highlights/${encodeURIComponent(id)}`, { method: "DELETE" });
+      state.highlights = state.highlights.filter((h) => h.id !== id);
+      state.activeHighlightId = null;
+      applyHighlights();
+      renderHighlightsList();
+      el.activeHighlightEditor.style.display = "none";
+      toast("已删除高亮", "secondary");
+    }
+    function setLayoutDirty(dirty) {
+      state.layoutDirty = Boolean(dirty);
+      el.saveLayoutBtn.disabled = !state.layoutDirty;
+      el.undoCleanBtn.disabled = !state.cleanUndo.length;
+    }
+    function pushCleanUndo(record) {
+      if (!record?.node || !record?.parent) return;
+      state.cleanUndo.push(record);
+      el.undoCleanBtn.disabled = false;
+    }
+    function removeNodeWithUndo(node) {
+      if (!node?.parentNode) return;
+      pushCleanUndo({ node, parent: node.parentNode, nextSibling: node.nextSibling });
+      node.remove();
+      setLayoutDirty(true);
+    }
+    function undoCleanRemove() {
+      const rec = state.cleanUndo.pop();
+      if (!rec?.node || !rec?.parent) return setLayoutDirty(state.layoutDirty);
+      if (rec.nextSibling && rec.nextSibling.parentNode === rec.parent) rec.parent.insertBefore(rec.node, rec.nextSibling);
+      else rec.parent.appendChild(rec.node);
+      setLayoutDirty(true);
+      if (state.cleanMode) applyCleanModeDecorations();
+    }
+    function isEditableTextBlock(node) {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+      const tag = (node.tagName || "").toUpperCase();
+      return ["P", "H1", "H2", "H3", "BLOCKQUOTE", "LI", "PRE"].includes(tag) || (tag === "DIV" && !node.querySelector("img,video,iframe,embed,object,figure,picture") && normalizeSpaces(node.textContent || "").length > 0);
+    }
+    function placeCaretAtEnd(node) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    function setBlockEditing(block, enabled) {
+      if (!block) return;
+      if (enabled) {
+        block.setAttribute("contenteditable", "true");
+        block.setAttribute("spellcheck", "true");
+        if (!block.dataset.editBound) {
+          block.dataset.editBound = "1";
+          block.addEventListener("input", () => setLayoutDirty(true), { passive: true });
+          block.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setBlockEditing(block, false);
+              block.blur();
+            }
+          });
+        }
+        block.addEventListener("blur", () => setBlockEditing(block, false), { once: true, capture: true });
+        block.focus();
+        placeCaretAtEnd(block);
+      } else {
+        block.removeAttribute("contenteditable");
+        block.removeAttribute("spellcheck");
+      }
+    }
+    function ensureCleanButton(target, onRemove) {
+      if (!target || target.querySelector(":scope > .clean-remove-btn")) return;
+      target.dataset.cleanTarget = "1";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "clean-remove-btn";
+      btn.textContent = "×";
+      btn.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); onRemove(); });
+      target.appendChild(btn);
+    }
+    function ensureEditButton(target) {
+      if (!target || target.querySelector(":scope > .edit-pencil-btn") || !isEditableTextBlock(target)) return;
+      target.dataset.cleanTarget = "1";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "edit-pencil-btn";
+      btn.textContent = "✎";
+      btn.title = "编辑段落";
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setBlockEditing(target, target.getAttribute("contenteditable") !== "true");
+      });
+      target.appendChild(btn);
+    }
+    function wrapCleanMedia(node) {
+      const existing = node.closest(".clean-media-wrap");
+      if (existing) return existing;
+      const wrap = document.createElement("div");
+      wrap.className = "clean-media-wrap";
+      node.parentNode?.insertBefore(wrap, node);
+      wrap.appendChild(node);
+      return wrap;
+    }
+    function applyCleanModeDecorations() {
+      el.readerContent.querySelectorAll(".clean-remove-btn,.edit-pencil-btn").forEach((n) => n.remove());
+      el.readerContent.querySelectorAll("[data-clean-target]").forEach((n) => n.removeAttribute("data-clean-target"));
+      el.readerContent.querySelectorAll("figure,picture,video,iframe,embed,object").forEach((node) => { if (!node.closest(".reader-article-header")) ensureCleanButton(wrapCleanMedia(node), () => removeNodeWithUndo(wrapCleanMedia(node))); });
+      el.readerContent.querySelectorAll("img").forEach((img) => { if (!img.closest(".reader-article-header") && !img.closest("figure,picture")) ensureCleanButton(wrapCleanMedia(img), () => removeNodeWithUndo(wrapCleanMedia(img))); });
+      Array.from(el.readerContent.children).forEach((child) => {
+        if (child.classList.contains("reader-article-header")) return;
+        ensureCleanButton(child, () => removeNodeWithUndo(child));
+        ensureEditButton(child);
+      });
+      const title = el.readerContent.querySelector(".reader-article-title");
+      if (title) ensureEditButton(title);
+      el.readerContent.querySelectorAll(".reader-article-deck p").forEach((p) => ensureEditButton(p));
+    }
+    function toggleCleanMode() {
+      if (!state.currentArticleId) return;
+      state.cleanMode = !state.cleanMode;
+      el.readerContent.classList.toggle("clean-mode", state.cleanMode);
+      if (state.cleanMode) {
+        state.cleanUndo = [];
+        el.undoCleanBtn.style.display = "inline-block";
+        el.undoCleanBtn.disabled = true;
+        el.highlightBtn.disabled = true;
+        applyCleanModeDecorations();
+        toast("进入清理模式：悬停显示删除和编辑按钮。", "secondary");
+      } else {
+        el.readerContent.querySelectorAll(".clean-remove-btn,.edit-pencil-btn").forEach((n) => n.remove());
+        el.readerContent.querySelectorAll("[data-clean-target]").forEach((n) => n.removeAttribute("data-clean-target"));
+        el.readerContent.querySelectorAll('[contenteditable="true"]').forEach((n) => { n.removeAttribute("contenteditable"); n.removeAttribute("spellcheck"); });
+        el.readerContent.querySelectorAll(".clean-media-wrap").forEach((wrap) => {
+          const parent = wrap.parentNode;
+          while (wrap.firstChild) parent.insertBefore(wrap.firstChild, wrap);
+          parent.removeChild(wrap);
+        });
+        el.undoCleanBtn.style.display = "none";
+        el.undoCleanBtn.disabled = true;
+        toast("退出清理模式", "secondary");
+      }
+    }
+    function serializeReaderContentForSave() {
+      const clone = el.readerContent.cloneNode(true);
+      clone.querySelectorAll(".clean-remove-btn,.edit-pencil-btn").forEach((n) => n.remove());
+      clone.querySelectorAll("[data-clean-target]").forEach((n) => n.removeAttribute("data-clean-target"));
+      clone.querySelectorAll('[contenteditable="true"]').forEach((n) => { n.removeAttribute("contenteditable"); n.removeAttribute("spellcheck"); });
+      clone.querySelectorAll(".clean-media-wrap").forEach((wrap) => {
+        const parent = wrap.parentNode;
+        while (wrap.firstChild) parent.insertBefore(wrap.firstChild, wrap);
+        parent.removeChild(wrap);
+      });
+      clone.querySelectorAll("mark[data-highlight-id]").forEach((mark) => {
+        const parent = mark.parentNode;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+      });
+      clone.normalize();
+      return clone.innerHTML;
+    }
+    async function saveLayoutChanges() {
+      if (!state.currentArticleId || !state.currentArticle || !state.layoutDirty) return;
+      if (state.highlights.length && !window.confirm("当前文章已经有高亮。移动或删除内容可能会导致旧高亮失效，仍要保存吗？")) return;
+      const title = normalizeSpaces(el.readerContent.querySelector(".reader-article-title")?.textContent || state.currentArticle.title || "");
+      const res = await api(`/api/articles/${encodeURIComponent(state.currentArticleId)}`, { method: "PATCH", body: JSON.stringify({ content_html: serializeReaderContentForSave(), title }) });
+      state.currentArticle = res.article || state.currentArticle;
+      setLayoutDirty(false);
+      toast("已保存清理结果", "success");
+      await openArticle(state.currentArticleId);
+    }
+    async function deleteCurrentArticle() {
+      if (!state.currentArticleId || !window.confirm("确定删除这篇文章及其高亮和相关词袋吗？")) return;
+      const id = state.currentArticleId;
+      await api(`/api/articles/${encodeURIComponent(id)}`, { method: "DELETE" });
+      state.currentArticleId = null;
+      state.currentArticle = null;
+      state.highlights = [];
+      state.activeHighlightId = null;
+      el.readerTitle.textContent = "未选择文章";
+      el.readerMeta.textContent = "";
+      el.readerContent.innerHTML = `<p class="muted">从左侧选择文章，或点击“导入”创建一篇新文章。</p><p class="muted">MVP 限制：一次高亮必须落在同一个文本节点内，避免跨段落或跨元素。</p>`;
+      el.currentArticlePill.textContent = "";
+      el.cleanModeBtn.style.display = "none";
+      el.undoCleanBtn.style.display = "none";
+      el.saveLayoutBtn.style.display = "none";
+      el.deleteArticleBtn.style.display = "none";
+      el.activeHighlightEditor.style.display = "none";
+      await loadArticles();
+      toast("已删除文章", "secondary");
+    }
+    function openInboxModal() {
+      const current = state.highlights.find((h) => h.id === state.activeHighlightId);
+      if (!current) return;
+      el.inboxExpression.value = (current.quote_text || "").trim().slice(0, 120);
+      el.inboxContext.value = "";
+      el.inboxNote.value = (current.note || "").trim();
+      el.inboxModal.show();
+    }
+    async function saveInboxItem() {
+      if (!state.currentArticleId || !state.activeHighlightId) return;
+      const expression = (el.inboxExpression.value || "").trim();
+      if (!expression) return toast("expression 不能为空", "warning");
+      await api("/api/vocab-inbox", { method: "POST", body: JSON.stringify({ article_id: state.currentArticleId, highlight_id: state.activeHighlightId, expression, context_sentence: (el.inboxContext.value || "").trim(), user_note: (el.inboxNote.value || "").trim(), status: "draft" }) });
+      el.inboxModal.hide();
+      toast("已加入词袋", "success");
+    }
+    function handleSelectionChange() {
+      const info = selectionInReader();
+      if (!info) return void (el.highlightBtn.disabled = true);
+      el.highlightBtn.disabled = !info.valid;
+    }
+    function resetImportModal() {
+      el.importTitle.value = "";
+      el.importUrl.value = "";
+      el.importEditor.innerHTML = "";
+      document.getElementById("modeAuto").checked = true;
+      el.importDenoise.checked = true;
+      state.importLastPaste = { hasHtml: false, hasText: false, at: 0 };
+      state.importBodyStartIndex = null;
+      updateImportDetectedHint();
+      setImportView("edit");
+    }
+    el.importBtn.addEventListener("click", () => { resetImportModal(); el.importModal.show(); });
+    el.importEditor.addEventListener("paste", (event) => {
+      state.importLastPaste = { hasHtml: Boolean(event.clipboardData?.getData("text/html")), hasText: Boolean(event.clipboardData?.getData("text/plain")), at: Date.now() };
+      setTimeout(() => updateImportDetectedHint(), 0);
+    });
+    el.importViewEdit.addEventListener("click", () => setImportView("edit"));
+    el.importViewPreview.addEventListener("click", () => setImportView("preview"));
+    el.importClear.addEventListener("click", () => {
+      el.importEditor.innerHTML = "";
+      state.importBodyStartIndex = null;
+      state.importLastPaste = { hasHtml: false, hasText: false, at: 0 };
+      updateImportDetectedHint("已清空");
+      if (state.importView === "preview") setImportView("preview");
+    });
+    document.querySelectorAll('input[name="importMode"]').forEach((radio) => radio.addEventListener("change", () => { updateImportDetectedHint(); if (state.importView === "preview") setImportView("preview"); }));
+    el.importDenoise.addEventListener("change", () => { if (state.importView === "preview") setImportView("preview"); });
+    el.importSaveBtn.addEventListener("click", async () => {
+      const title = (el.importTitle.value || "").trim();
+      const source_url = (el.importUrl.value || "").trim();
+      const rawText = ((el.importEditor.innerText || "") + (el.importEditor.querySelector("img") ? " [img]" : "")).trim();
+      if (!rawText) return toast("内容不能为空", "warning");
+      const built = buildImportedContentWithBlocks(state.importBodyStartIndex);
+      try {
+        const data = await api("/api/articles", { method: "POST", body: JSON.stringify({ title: title || inferTitleFromContentHtml(built.content_html), source_url, content_raw: built.content_raw, content_html: built.content_html }) });
+        el.importModal.hide();
+        toast("已导入文章", "success");
+        await loadArticles();
+        await openArticle(data.article.id);
+      } catch (error) {
+        toast(`导入失败：${error.message || "unknown"}`, "danger");
+      }
+    });
+    el.articleFilter.addEventListener("input", renderArticles);
+    el.refreshArticles.addEventListener("click", () => loadArticles().catch((e) => toast(e.message, "danger")));
+    el.fontInc.addEventListener("click", () => setFontSize(state.fontSize + 1));
+    el.fontDec.addEventListener("click", () => setFontSize(state.fontSize - 1));
+    el.highlightBtn.addEventListener("click", () => createHighlightFromSelection().catch((e) => toast(e.message, "danger")));
+    el.cleanModeBtn.addEventListener("click", () => { try { toggleCleanMode(); } catch (e) { toast(e.message || "清理模式切换失败", "danger"); } });
+    el.undoCleanBtn.addEventListener("click", undoCleanRemove);
+    el.saveLayoutBtn.addEventListener("click", () => saveLayoutChanges().catch((e) => toast(e.message, "danger")));
+    el.deleteArticleBtn.addEventListener("click", () => deleteCurrentArticle().catch((e) => toast(e.message, "danger")));
+    el.saveHighlightBtn.addEventListener("click", () => saveActiveHighlight().catch((e) => toast(e.message, "danger")));
+    el.deleteHighlightBtn.addEventListener("click", () => deleteActiveHighlight().catch((e) => toast(e.message, "danger")));
+    el.addToInboxBtn.addEventListener("click", openInboxModal);
+    el.inboxSaveBtn.addEventListener("click", () => saveInboxItem().catch((e) => toast(e.message, "danger")));
+    document.addEventListener("selectionchange", handleSelectionChange);
+    el.readerContent.addEventListener("click", () => setActiveHighlight(null));
+    document.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === "z" || event.key === "Z") && state.cleanMode && state.cleanUndo.length) {
+        const tag = document.activeElement?.tagName?.toUpperCase();
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          event.preventDefault();
+          undoCleanRemove();
+          return;
+        }
+      }
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && (event.key === "h" || event.key === "H") && !el.highlightBtn.disabled) {
+        event.preventDefault();
+        createHighlightFromSelection().catch((e) => toast(e.message, "danger"));
+      }
+      if (event.key === "Escape") setActiveHighlight(null);
+    });
+    setFontSize(state.fontSize);
+    updateImportDetectedHint();
+    loadArticles().catch((e) => toast(`无法加载文章：${e.message}`, "danger"));
+  </script>
+</body>
+</html>
